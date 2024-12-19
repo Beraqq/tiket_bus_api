@@ -14,6 +14,7 @@ class BusesController extends Controller
         return response()->json(buses::all(), 200);
     }
 
+
     // POST /api/buses
     public function store(Request $request)
     {
@@ -65,43 +66,61 @@ class BusesController extends Controller
 
     // PUT /api/buses/{id}
     public function update(Request $request, $id)
-    {
-        try {
-            // Validasi input
-            $validator = Validator::make($request->all(), [
-                'bus_code' => 'required|max:255|unique:buses,bus_code,' . $id,
-                'class' => 'required|in:economy,executive,VVIP',
-                'facilities' => 'nullable|string',
-                'total_seats' => 'required|integer|min:1',
-                'price_per_seat' => 'required|numeric|min:0',
-            ]);
+{
+    try {
+        // Validasi input
+        $validator = Validator::make($request->all(), [
+            'bus_code' => 'required|max:255|unique:buses,bus_code,' . $id,
+            'class' => 'required|in:economy,executive,VVIP',
+            'facilities' => 'nullable|string',
+            'total_seats' => 'required|integer|min:1',
+            'price_per_seat' => 'required|numeric|min:0',
+        ]);
 
-            // Jika validasi gagal, kirimkan pesan error
-            if ($validator->fails()) {
-                $validatorMessage = $validator->errors()->first();
-                return response()->json(['status' => 'failed', 'message' => $validatorMessage]);
-            }
-
-            // Cari bus berdasarkan ID yang diberikan
-            $bus = buses::find($id);
-
-            // Perbarui data bus yang ada
-            $bus->update([
-                'bus_code' => $request->bus_code,
-                'class' => $request->class,
-                'facilities' => $request->facilities,
-                'total_seats' => $request->total_seats,
-                'price_per_seat' => $request->price_per_seat,
-            ]);
-
-            // Kembalikan response sukses dengan status 200 (OK)
-            return response()->json(['status' => 'success', 'message' => 'Bus updated successfully', 'data' => $bus], 200);
-
-        } catch (\Throwable $error) {
-            // Tangani error jika ada masalah
-            return response()->json(['status' => 'failed', 'message' => 'Error: ' . $error->getMessage()]);
+        // Jika validasi gagal, kirimkan pesan error
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'failed',
+                'message' => $validator->errors()->first()
+            ], 422);
         }
+
+        // Cari bus berdasarkan ID yang diberikan
+        $bus = Buses::find($id);
+
+        // Jika bus tidak ditemukan
+        if (!$bus) {
+            return response()->json([
+                'status' => 'failed',
+                'message' => 'Bus not found'
+            ], 404);
+        }
+
+        // Perbarui data bus yang ada
+        $bus->update([
+            'bus_code' => $request->bus_code,
+            'class' => $request->class,
+            'facilities' => $request->facilities,
+            'total_seats' => $request->total_seats,
+            'price_per_seat' => $request->price_per_seat,
+        ]);
+
+        // Kembalikan response sukses dengan status 200 (OK)
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Bus updated successfully',
+            'data' => $bus
+        ], 200);
+
+    } catch (\Throwable $error) {
+        // Tangani error jika ada masalah
+        return response()->json([
+            'status' => 'failed',
+            'message' => 'Error: ' . $error->getMessage()
+        ], 500);
     }
+}
+
 
     // DELETE /api/buses/{id}
     public function destroy($id)

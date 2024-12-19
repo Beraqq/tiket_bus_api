@@ -17,4 +17,10 @@ class buses extends Model
         'total_seats',
         'price_per_seat',
     ];
+
+
+    public function schedules()
+    {
+        return $this->hasMany(schedules::class);
+    }
 }
