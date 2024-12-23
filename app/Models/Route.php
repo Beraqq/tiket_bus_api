@@ -6,11 +6,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class routes extends Model
+class Route extends Model
 {
     use HasFactory;
 
     protected $table = 'routes';
+    protected $primaryKey = 'route_id';
+    public $incrementing = false;
+    protected $keyType = 'string';
 
     protected $fillable = [
         'route_id',
@@ -20,6 +23,6 @@ class routes extends Model
 
     public function schedules()
     {
-        return $this->hasMany(schedules::class);
+        return $this->hasMany(Schedule::class, 'route_id', 'route_id');
     }
 }

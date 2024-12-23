@@ -2,19 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Route;
+use App\Models\History;
+use App\Models\Booking;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
-class RoutesController extends Controller
+class HistoryController extends Controller
 {
     public function index()
     {
         try {
-            $routes = Route::all();
+            $histories = History::with(['user', 'booking'])->get();
+
             return response()->json([
                 'status' => 'success',
-                'data' => $routes
+                'data' => $histories
             ], 200);
         } catch (\Throwable $error) {
             return response()->json([
@@ -28,9 +30,7 @@ class RoutesController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'route_id' => 'required|unique:routes|max:255',
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'booking_id' => 'required|exists:bookings,id'
             ]);
 
             if ($validator->fails()) {
@@ -40,16 +40,27 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::create([
-                'route_id' => $request->route_id,
-                'departure' => $request->departure,
-                'destination' => $request->destination
+            // Cek apakah history untuk booking ini sudah ada
+            $existingHistory = History::where('booking_id', $request->booking_id)->first();
+            if ($existingHistory) {
+                return response()->json([
+                    'status' => 'failed',
+                    'message' => 'History already exists for this booking'
+                ], 422);
+            }
+
+            $history = History::create([
+                'user_id' => auth('api')->user()->id ?? 1, // Gunakan 1 untuk testing
+                'booking_id' => $request->booking_id
             ]);
+
+            // Load relasi
+            $history->load(['user', 'booking']);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route created successfully',
-                'data' => $route
+                'message' => 'History created successfully',
+                'data' => $history
             ], 201);
 
         } catch (\Throwable $error) {
@@ -60,21 +71,21 @@ class RoutesController extends Controller
         }
     }
 
-    public function show($route_id)
+    public function show($id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $history = History::with(['user', 'booking'])->find($id);
 
-            if (!$route) {
+            if (!$history) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'History not found'
                 ], 404);
             }
 
             return response()->json([
                 'status' => 'success',
-                'data' => $route
+                'data' => $history
             ], 200);
 
         } catch (\Throwable $error) {
@@ -85,12 +96,11 @@ class RoutesController extends Controller
         }
     }
 
-    public function update(Request $request, $route_id)
+    public function update(Request $request, $id)
     {
         try {
             $validator = Validator::make($request->all(), [
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'booking_id' => 'required|exists:bookings,id'
             ]);
 
             if ($validator->fails()) {
@@ -100,24 +110,26 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::where('route_id', $route_id)->first();
+            $history = History::find($id);
 
-            if (!$route) {
+            if (!$history) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'History not found'
                 ], 404);
             }
 
-            $route->update([
-                'departure' => $request->departure,
-                'destination' => $request->destination
+            $history->update([
+                'booking_id' => $request->booking_id
             ]);
+
+            // Load relasi
+            $history->load(['user', 'booking']);
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route updated successfully',
-                'data' => $route
+                'message' => 'History updated successfully',
+                'data' => $history
             ], 200);
 
         } catch (\Throwable $error) {
@@ -128,23 +140,23 @@ class RoutesController extends Controller
         }
     }
 
-    public function destroy($route_id)
+    public function destroy($id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $history = History::find($id);
 
-            if (!$route) {
+            if (!$history) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'History not found'
                 ], 404);
             }
 
-            $route->delete();
+            $history->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route deleted successfully'
+                'message' => 'History deleted successfully'
             ], 200);
 
         } catch (\Throwable $error) {

@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Route;
+use App\Models\Schedule;
+use App\Models\schedules;
+use Illuminate\Database\Eloquent\Scope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
-class RoutesController extends Controller
+class ScheduleController extends Controller
 {
     public function index()
     {
         try {
-            $routes = Route::all();
+            $schedules = Schedule::with(['bus', 'route'])->get();
+
             return response()->json([
                 'status' => 'success',
-                'data' => $routes
+                'data' => $schedules
             ], 200);
         } catch (\Throwable $error) {
             return response()->json([
@@ -28,9 +31,12 @@ class RoutesController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'route_id' => 'required|unique:routes|max:255',
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'schedule_id' => 'required|unique:schedules|max:255',
+                'bus_code' => 'required|exists:buses,bus_code',
+                'route_id' => 'required|exists:routes,route_id',
+                'departure_date' => 'required|date',
+                'departure_time' => 'required|date_format:H:i',
+                'available_seats' => 'required|integer|min:1',
             ]);
 
             if ($validator->fails()) {
@@ -40,41 +46,39 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::create([
-                'route_id' => $request->route_id,
-                'departure' => $request->departure,
-                'destination' => $request->destination
-            ]);
+            $schedule = Schedule::create($request->all());
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route created successfully',
-                'data' => $route
+                'message' => 'Schedule created successfully',
+                'data' => $schedule
             ], 201);
 
         } catch (\Throwable $error) {
             return response()->json([
-                'status' => 'failed',
+                'status' => 'error',
                 'message' => 'Error: ' . $error->getMessage()
             ], 500);
         }
     }
 
-    public function show($route_id)
+    public function show($schedule_id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $schedule = Schedule::with(['bus', 'route'])
+                ->where('schedule_id', $schedule_id)
+                ->first();
 
-            if (!$route) {
+            if (!$schedule) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Schedule not found'
                 ], 404);
             }
 
             return response()->json([
                 'status' => 'success',
-                'data' => $route
+                'data' => $schedule
             ], 200);
 
         } catch (\Throwable $error) {
@@ -85,12 +89,15 @@ class RoutesController extends Controller
         }
     }
 
-    public function update(Request $request, $route_id)
+    public function update(Request $request, $schedule_id)
     {
         try {
             $validator = Validator::make($request->all(), [
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'bus_code' => 'required|exists:buses,bus_code',
+                'route_id' => 'required|exists:routes,route_id',
+                'departure_date' => 'required|date',
+                'departure_time' => 'required|date_format:H:i',
+                'available_seats' => 'required|integer|min:1',
             ]);
 
             if ($validator->fails()) {
@@ -100,51 +107,48 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::where('route_id', $route_id)->first();
+            $schedule = Schedule::where('schedule_id', $schedule_id)->first();
 
-            if (!$route) {
+            if (!$schedule) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Schedule not found'
                 ], 404);
             }
 
-            $route->update([
-                'departure' => $request->departure,
-                'destination' => $request->destination
-            ]);
+            $schedule->update($request->all());
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route updated successfully',
-                'data' => $route
+                'message' => 'Schedule updated successfully',
+                'data' => $schedule
             ], 200);
 
         } catch (\Throwable $error) {
             return response()->json([
-                'status' => 'failed',
+                'status' => 'error',
                 'message' => 'Error: ' . $error->getMessage()
             ], 500);
         }
     }
 
-    public function destroy($route_id)
+    public function destroy($schedule_id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $schedule = Schedule::where('schedule_id', $schedule_id)->first();
 
-            if (!$route) {
+            if (!$schedule) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Schedule not found'
                 ], 404);
             }
 
-            $route->delete();
+            $schedule->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route deleted successfully'
+                'message' => 'Schedule deleted successfully'
             ], 200);
 
         } catch (\Throwable $error) {

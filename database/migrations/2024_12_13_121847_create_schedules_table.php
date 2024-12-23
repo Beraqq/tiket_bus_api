@@ -14,8 +14,10 @@ return new class extends Migration
         Schema::create('schedules', function (Blueprint $table) {
             $table->id();
             $table->string('schedule_id')->unique();
-            $table->foreignId('bus_code')->constrained('buses')->onDelete('cascade');
-            $table->foreignId('route_id')->constrained('routes')->onDelete('cascade');
+            $table->string('bus_code');
+            $table->string('route_id');
+            $table->foreign('bus_code')->references('bus_code')->on('buses')->onDelete('cascade');
+            $table->foreign('route_id')->references('route_id')->on('routes')->onDelete('cascade');
             $table->date('departure_date');
             $table->time('departure_time');
             $table->integer('available_seats');

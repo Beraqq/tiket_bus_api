@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Route;
+use App\Models\Ticket;
+use App\Models\Booking;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
-class RoutesController extends Controller
+class TicketController extends Controller
 {
     public function index()
     {
         try {
-            $routes = Route::all();
+            $tickets = Ticket::with('booking')->get();
+
             return response()->json([
                 'status' => 'success',
-                'data' => $routes
+                'data' => $tickets
             ], 200);
         } catch (\Throwable $error) {
             return response()->json([
@@ -28,9 +31,7 @@ class RoutesController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'route_id' => 'required|unique:routes|max:255',
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'booking_id' => 'required|exists:bookings,id'
             ]);
 
             if ($validator->fails()) {
@@ -40,16 +41,30 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::create([
-                'route_id' => $request->route_id,
-                'departure' => $request->departure,
-                'destination' => $request->destination
+            // Cek apakah booking sudah memiliki ticket
+            $existingTicket = Ticket::where('booking_id', $request->booking_id)->first();
+            if ($existingTicket) {
+                return response()->json([
+                    'status' => 'failed',
+                    'message' => 'Ticket already exists for this booking'
+                ], 422);
+            }
+
+            // Generate unique ticket code
+            $ticket_code = 'TIX-' . strtoupper(Str::random(8));
+
+            $ticket = Ticket::create([
+                'booking_id' => $request->booking_id,
+                'ticket_code' => $ticket_code
             ]);
+
+            // Load relasi booking
+            $ticket->load('booking');
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route created successfully',
-                'data' => $route
+                'message' => 'Ticket created successfully',
+                'data' => $ticket
             ], 201);
 
         } catch (\Throwable $error) {
@@ -60,21 +75,21 @@ class RoutesController extends Controller
         }
     }
 
-    public function show($route_id)
+    public function show($id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $ticket = Ticket::with('booking')->find($id);
 
-            if (!$route) {
+            if (!$ticket) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Ticket not found'
                 ], 404);
             }
 
             return response()->json([
                 'status' => 'success',
-                'data' => $route
+                'data' => $ticket
             ], 200);
 
         } catch (\Throwable $error) {
@@ -85,12 +100,11 @@ class RoutesController extends Controller
         }
     }
 
-    public function update(Request $request, $route_id)
+    public function update(Request $request, $id)
     {
         try {
             $validator = Validator::make($request->all(), [
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'ticket_code' => 'required|unique:tickets,ticket_code,' . $id
             ]);
 
             if ($validator->fails()) {
@@ -100,24 +114,26 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::where('route_id', $route_id)->first();
+            $ticket = Ticket::find($id);
 
-            if (!$route) {
+            if (!$ticket) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Ticket not found'
                 ], 404);
             }
 
-            $route->update([
-                'departure' => $request->departure,
-                'destination' => $request->destination
+            $ticket->update([
+                'ticket_code' => $request->ticket_code
             ]);
+
+            // Load relasi booking
+            $ticket->load('booking');
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route updated successfully',
-                'data' => $route
+                'message' => 'Ticket updated successfully',
+                'data' => $ticket
             ], 200);
 
         } catch (\Throwable $error) {
@@ -128,23 +144,23 @@ class RoutesController extends Controller
         }
     }
 
-    public function destroy($route_id)
+    public function destroy($id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $ticket = Ticket::find($id);
 
-            if (!$route) {
+            if (!$ticket) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Ticket not found'
                 ], 404);
             }
 
-            $route->delete();
+            $ticket->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route deleted successfully'
+                'message' => 'Ticket deleted successfully'
             ], 200);
 
         } catch (\Throwable $error) {

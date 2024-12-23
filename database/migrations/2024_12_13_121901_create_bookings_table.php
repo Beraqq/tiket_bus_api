@@ -14,7 +14,8 @@ return new class extends Migration
         Schema::create('bookings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('schedule_id')->constrained('schedules')->onDelete('cascade');
+            $table->string('schedule_id');
+            $table->foreign('schedule_id')->references('schedule_id')->on('schedules')->onDelete('cascade');
             $table->integer('seat_number');
             $table->decimal('total_price', 10, 2);
             $table->enum('status', ['pending', 'paid', 'canceled'])->default('pending');

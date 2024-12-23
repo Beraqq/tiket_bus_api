@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Route;
+use App\Models\Payment;
+use App\Models\Booking;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Carbon\Carbon;
 
-class RoutesController extends Controller
+class PaymentController extends Controller
 {
     public function index()
     {
         try {
-            $routes = Route::all();
+            $payments = Payment::with('booking')->get();
+
             return response()->json([
                 'status' => 'success',
-                'data' => $routes
+                'data' => $payments
             ], 200);
         } catch (\Throwable $error) {
             return response()->json([
@@ -28,9 +31,9 @@ class RoutesController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'route_id' => 'required|unique:routes|max:255',
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'booking_id' => 'required|exists:bookings,id',
+                'method' => 'required|string',
+                'virtual_account' => 'nullable|string',
             ]);
 
             if ($validator->fails()) {
@@ -40,16 +43,24 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::create([
-                'route_id' => $request->route_id,
-                'departure' => $request->departure,
-                'destination' => $request->destination
+            // Set payment deadline 24 jam dari sekarang
+            $payment_deadline = Carbon::now()->addHours(24);
+
+            $payment = Payment::create([
+                'booking_id' => $request->booking_id,
+                'method' => $request->method,
+                'virtual_account' => $request->virtual_account,
+                'payment_deadline' => $payment_deadline,
+                'status' => 'pending'
             ]);
+
+            // Load relasi booking
+            $payment->load('booking');
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route created successfully',
-                'data' => $route
+                'message' => 'Payment created successfully',
+                'data' => $payment
             ], 201);
 
         } catch (\Throwable $error) {
@@ -60,21 +71,21 @@ class RoutesController extends Controller
         }
     }
 
-    public function show($route_id)
+    public function show($id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $payment = Payment::with('booking')->find($id);
 
-            if (!$route) {
+            if (!$payment) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Payment not found'
                 ], 404);
             }
 
             return response()->json([
                 'status' => 'success',
-                'data' => $route
+                'data' => $payment
             ], 200);
 
         } catch (\Throwable $error) {
@@ -85,12 +96,11 @@ class RoutesController extends Controller
         }
     }
 
-    public function update(Request $request, $route_id)
+    public function update(Request $request, $id)
     {
         try {
             $validator = Validator::make($request->all(), [
-                'departure' => 'required|string|max:255',
-                'destination' => 'required|string|max:255'
+                'status' => 'required|in:pending,completed,failed'
             ]);
 
             if ($validator->fails()) {
@@ -100,24 +110,32 @@ class RoutesController extends Controller
                 ], 422);
             }
 
-            $route = Route::where('route_id', $route_id)->first();
+            $payment = Payment::find($id);
 
-            if (!$route) {
+            if (!$payment) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Payment not found'
                 ], 404);
             }
 
-            $route->update([
-                'departure' => $request->departure,
-                'destination' => $request->destination
+            // Update payment status
+            $payment->update([
+                'status' => $request->status
             ]);
+
+            // Jika payment completed, update booking status jadi paid
+            if ($request->status === 'completed') {
+                $payment->booking->update(['status' => 'paid']);
+            }
+
+            // Load relasi booking
+            $payment->load('booking');
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route updated successfully',
-                'data' => $route
+                'message' => 'Payment updated successfully',
+                'data' => $payment
             ], 200);
 
         } catch (\Throwable $error) {
@@ -128,23 +146,23 @@ class RoutesController extends Controller
         }
     }
 
-    public function destroy($route_id)
+    public function destroy($id)
     {
         try {
-            $route = Route::where('route_id', $route_id)->first();
+            $payment = Payment::find($id);
 
-            if (!$route) {
+            if (!$payment) {
                 return response()->json([
                     'status' => 'failed',
-                    'message' => 'Route not found'
+                    'message' => 'Payment not found'
                 ], 404);
             }
 
-            $route->delete();
+            $payment->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Route deleted successfully'
+                'message' => 'Payment deleted successfully'
             ], 200);
 
         } catch (\Throwable $error) {

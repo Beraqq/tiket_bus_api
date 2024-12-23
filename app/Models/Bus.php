@@ -5,10 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class buses extends Model
+class Bus extends Model
 {
     use HasFactory;
 
+    protected $table = 'buses';
+    protected $primaryKey = 'bus_code';
+    public $incrementing = false;
+    protected $keyType = 'string';
     // Tentukan kolom yang dapat diisi
     protected $fillable = [
         'bus_code',
@@ -21,6 +25,6 @@ class buses extends Model
 
     public function schedules()
     {
-        return $this->hasMany(schedules::class);
+        return $this->hasMany(Schedule::class, 'bus_code', 'bus_code');
     }
 }
