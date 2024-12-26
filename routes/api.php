@@ -27,6 +27,7 @@ Route::get('user-profile', function (Request $request) {
 Route::middleware('auth:api')->group(function () {
     Route::get('buses', [BusController::class, 'index']);
     Route::post('buses', [BusController::class, 'store']);
+    Route::get('buses/class/{class}', [BusController::class, 'getByClass']);
     Route::get('buses/{id}', [BusController::class, 'show']);
     Route::put('buses/{id}', [BusController::class, 'update']);
     Route::delete('buses/{id}', [BusController::class, 'destroy']);

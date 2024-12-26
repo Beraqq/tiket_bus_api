@@ -36,7 +36,7 @@ class AuthController extends Controller
 
                 $token = JWTAuth::fromUser($user);
 
-                return response()->json(['status' =>'success','token' => $token, 'data' => $user], 201);
+                return response()->json(['status' =>'success','user' => ['token' => $token, 'data' => $user]], 201);
             endif;
 
         }catch(\Throwable $error){
@@ -48,17 +48,22 @@ class AuthController extends Controller
     {
         $credentials = $request->only('email', 'password');
 
-        if (!$token = JWTAuth::attempt($credentials)) {
-            return response()->json(['error' => 'Invalid Credentials'], 401);
+        if (empty($request->password)) {
+            return response()->json(['error' => 'The Password field is required'], 422);
         }
 
-        return response()->json(['token' => $token]);
+        if (!$token = JWTAuth::attempt($credentials)) {
+            return response()->json(['message' => 'Invalid Credentials'], 403);
+        }
+
+        $user = Auth::user();
+        return response()->json(['user' => $user, 'token' => $token], 200);
     }
 
     public function logout()
     {
         JWTAuth::invalidate(JWTAuth::getToken());
 
-        return response()->json(['message' => 'Successfully logged out']);
+        return response()->json(['user' => ['message' => 'Successfully logged out']]);
     }
 }

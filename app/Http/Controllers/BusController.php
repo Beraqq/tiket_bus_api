@@ -12,7 +12,27 @@ class BusController extends Controller
     // GET /api/buses
     public function index()
     {
-        return response()->json(Bus::all(), 200);
+        try {
+            $buses = Bus::all();
+            return response()->json($buses, 200);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Failed to fetch buses'], 500);
+        }
+    }
+
+    public function getByClass($class)
+    {
+        try {
+            $bus = Bus::where('class', $class)->first();
+
+            if (!$bus) {
+                return response()->json(['message' => 'Bus not found'], 404);
+            }
+
+            return response()->json($bus);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Error fetching bus'], 500);
+        }
     }
 
 
