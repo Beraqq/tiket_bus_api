@@ -126,6 +126,22 @@ class BookingController extends Controller
         }
     }
 
+    public function checkAvailability($scheduleId)
+{
+    $schedule = Schedule::findOrFail($scheduleId);
+    $bookedSeats = Booking::where('schedule_id', $scheduleId)
+                         ->where('status', '!=', 'cancelled')
+                         ->pluck('seat_number')
+                         ->toArray();
+
+    $totalSeats = $schedule->bus->total_seats;
+    $availableSeats = array_diff(range(1, $totalSeats), $bookedSeats);
+
+    return response()->json([
+        'available_seats' => array_values($availableSeats)
+    ]);
+}
+
     public function update(Request $request, $id)
     {
         try {

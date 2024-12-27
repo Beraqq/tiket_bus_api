@@ -3,10 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Schedule;
-use App\Models\schedules;
-use Illuminate\Database\Eloquent\Scope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 
 class ScheduleController extends Controller
 {
@@ -14,15 +13,42 @@ class ScheduleController extends Controller
     {
         try {
             $schedules = Schedule::with(['bus', 'route'])->get();
+            return response()->json([
+                'status' => 'success',
+                'schedules' => $schedules
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching schedules: ' . $e->getMessage());
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error fetching schedules'
+            ], 500);
+        }
+    }
+
+    public function getAvailable($busCode, $date)
+    {
+        try {
+            Log::info('Searching schedules for bus: ' . $busCode . ' on date: ' . $date);
+
+            $schedules = Schedule::where('bus_code', $busCode)
+                ->whereDate('departure_date', $date)
+                ->with(['bus', 'route'])
+                ->get();
+
+            Log::info('Found ' . $schedules->count() . ' schedules');
 
             return response()->json([
                 'status' => 'success',
-                'data' => $schedules
+                'schedules' => $schedules,
+                'message' => 'Schedules retrieved successfully'
             ], 200);
-        } catch (\Throwable $error) {
+        } catch (\Exception $e) {
+            Log::error('Error in getAvailable: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
+                'message' => 'Error retrieving schedules',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -31,89 +57,102 @@ class ScheduleController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'schedule_id' => 'required|unique:schedules|max:255',
                 'bus_code' => 'required|exists:buses,bus_code',
                 'route_id' => 'required|exists:routes,route_id',
                 'departure_date' => 'required|date',
-                'departure_time' => 'required|date_format:H:i',
+                'departure_time' => 'required',
                 'available_seats' => 'required|integer|min:1',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'status' => 'failed',
-                    'message' => $validator->errors()->first()
+                    'status' => 'error',
+                    'message' => $validator->errors()
                 ], 422);
             }
 
-            $schedule = Schedule::create($request->all());
+            // Generate unique schedule_id
+            $scheduleId = 'SCH' . time() . rand(1000, 9999);
+
+            $schedule = Schedule::create([
+                'schedule_id' => $scheduleId,
+                'bus_code' => $request->bus_code,
+                'route_id' => $request->route_id,
+                'departure_date' => $request->departure_date,
+                'departure_time' => $request->departure_time,
+                'available_seats' => $request->available_seats
+            ]);
+
+            Log::info('Schedule created: ' . $scheduleId);
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Schedule created successfully',
-                'data' => $schedule
+                'schedule' => $schedule
             ], 201);
 
-        } catch (\Throwable $error) {
+        } catch (\Exception $e) {
+            Log::error('Error creating schedule: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
+                'message' => 'Error creating schedule: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function show($schedule_id)
+    public function show($scheduleId)
     {
         try {
-            $schedule = Schedule::with(['bus', 'route'])
-                ->where('schedule_id', $schedule_id)
+            $schedule = Schedule::where('schedule_id', $scheduleId)
+                ->with(['bus', 'route'])
                 ->first();
 
             if (!$schedule) {
                 return response()->json([
-                    'status' => 'failed',
+                    'status' => 'error',
                     'message' => 'Schedule not found'
                 ], 404);
             }
 
             return response()->json([
                 'status' => 'success',
-                'data' => $schedule
+                'schedule' => $schedule
             ], 200);
 
-        } catch (\Throwable $error) {
+        } catch (\Exception $e) {
+            Log::error('Error fetching schedule: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
+                'message' => 'Error fetching schedule'
             ], 500);
         }
     }
 
-    public function update(Request $request, $schedule_id)
+    public function update(Request $request, $scheduleId)
     {
         try {
+            $schedule = Schedule::where('schedule_id', $scheduleId)->first();
+
+            if (!$schedule) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Schedule not found'
+                ], 404);
+            }
+
             $validator = Validator::make($request->all(), [
                 'bus_code' => 'required|exists:buses,bus_code',
                 'route_id' => 'required|exists:routes,route_id',
                 'departure_date' => 'required|date',
-                'departure_time' => 'required|date_format:H:i',
+                'departure_time' => 'required',
                 'available_seats' => 'required|integer|min:1',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
-                    'status' => 'failed',
-                    'message' => $validator->errors()->first()
+                    'status' => 'error',
+                    'message' => $validator->errors()
                 ], 422);
-            }
-
-            $schedule = Schedule::where('schedule_id', $schedule_id)->first();
-
-            if (!$schedule) {
-                return response()->json([
-                    'status' => 'failed',
-                    'message' => 'Schedule not found'
-                ], 404);
             }
 
             $schedule->update($request->all());
@@ -121,25 +160,26 @@ class ScheduleController extends Controller
             return response()->json([
                 'status' => 'success',
                 'message' => 'Schedule updated successfully',
-                'data' => $schedule
+                'schedule' => $schedule
             ], 200);
 
-        } catch (\Throwable $error) {
+        } catch (\Exception $e) {
+            Log::error('Error updating schedule: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
+                'message' => 'Error updating schedule'
             ], 500);
         }
     }
 
-    public function destroy($schedule_id)
+    public function destroy($scheduleId)
     {
         try {
-            $schedule = Schedule::where('schedule_id', $schedule_id)->first();
+            $schedule = Schedule::where('schedule_id', $scheduleId)->first();
 
             if (!$schedule) {
                 return response()->json([
-                    'status' => 'failed',
+                    'status' => 'error',
                     'message' => 'Schedule not found'
                 ], 404);
             }
@@ -151,10 +191,11 @@ class ScheduleController extends Controller
                 'message' => 'Schedule deleted successfully'
             ], 200);
 
-        } catch (\Throwable $error) {
+        } catch (\Exception $e) {
+            Log::error('Error deleting schedule: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
+                'message' => 'Error deleting schedule'
             ], 500);
         }
     }

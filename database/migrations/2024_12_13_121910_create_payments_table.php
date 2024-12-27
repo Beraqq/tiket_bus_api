@@ -14,10 +14,13 @@ return new class extends Migration
         Schema::create('payments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('booking_id')->constrained('bookings')->onDelete('cascade');
+            $table->decimal('amount', 10, 2);  // Menambahkan jumlah pembayaran
             $table->string('method');
             $table->string('virtual_account')->nullable();
+            $table->string('payment_proof')->nullable();  // Untuk bukti pembayaran
             $table->timestamp('payment_deadline')->nullable();
-            $table->enum('status', ['pending', 'completed', 'failed'])->default('pending');
+            $table->enum('status', ['pending', 'completed', 'failed', 'expired'])->default('pending');
+            $table->text('payment_details')->nullable();  // Untuk menyimpan detail tambahan
             $table->timestamps();
         });
     }
