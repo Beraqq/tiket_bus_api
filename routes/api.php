@@ -12,6 +12,8 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\SchedulesController;
+use App\Http\Controllers\OrderController;
+use App\Models\Order;
 use Psy\Command\HistoryCommand;
 
 Route::post('register', [AuthController::class, 'register']);
@@ -68,6 +70,10 @@ Route::middleware('auth:api')->group(function () {
 Route::middleware('auth:api')->group(function () {
     Route::get('payments', [PaymentController::class, 'index']);
     Route::post('payments', [PaymentController::class, 'store']);
+    Route::post('/payments/create', [PaymentController::class, 'createPayment']);
+    Route::post('/payments/callback', [PaymentController::class, 'handleCallback']);
+    Route::post('/payments/{paymentId}/upload-proof', [PaymentController::class, 'uploadPaymentProof']);
+    Route::get('/payments/{paymentId}/status', [PaymentController::class, 'checkStatus']);
     Route::get('payments/{id}', [PaymentController::class, 'show']);
     Route::put('payments/{id}', [PaymentController::class, 'update']);
     Route::delete('payments/{id}', [PaymentController::class, 'destroy']);
@@ -91,6 +97,9 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('histories/{id}', [HistoryController::class, 'destroy']);
 });
 
+Route::middleware('auth:api')->group(function () {
+    Route::get('orders', [OrderController::class, 'index']);
+});
 
 // Route::middleware('auth:api')->group(function () {
 //     Route::get('user-profile', function () {

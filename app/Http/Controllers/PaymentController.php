@@ -1,174 +1,222 @@
 <?php
+// app/Http/Controllers/PaymentController.php
 
 namespace App\Http\Controllers;
 
-use App\Models\Payment;
 use App\Models\Booking;
+use App\Models\Payment;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
+use Midtrans\Config;
+use Midtrans\Snap;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
-    public function index()
+    public function __construct()
     {
-        try {
-            $payments = Payment::with('booking')->get();
+        // Set konfigurasi Midtrans
+        Config::$serverKey = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+        Config::$isSanitized = config('midtrans.is_sanitized');
+        Config::$is3ds = config('midtrans.is_3ds');
 
-            return response()->json([
-                'status' => 'success',
-                'data' => $payments
-            ], 200);
-        } catch (\Throwable $error) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
-            ], 500);
-        }
+        // Log konfigurasi untuk debugging
+        Log::info('Midtrans Configuration:', [
+            'serverKey' => config('midtrans.server_key'),
+            'isProduction' => config('midtrans.is_production'),
+            'merchantId' => config('midtrans.merchant_id')
+        ]);
     }
 
-    public function store(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'booking_id' => 'required|exists:bookings,id',
-                'method' => 'required|string',
-                'virtual_account' => 'nullable|string',
-            ]);
+    public function createPayment(Request $request)
+{
+    try {
+        Log::info('Payment Request:', $request->all());
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'failed',
-                    'message' => $validator->errors()->first()
-                ], 422);
-            }
+        $validated = $request->validate([
+            'booking_id' => 'required|exists:bookings,id',
+            'amount' => 'required|numeric',
+        ]);
 
-            // Set payment deadline 24 jam dari sekarang
-            $payment_deadline = Carbon::now()->addHours(24);
+        $booking = Booking::with(['user', 'schedule.bus'])->findOrFail($validated['booking_id']);
 
-            $payment = Payment::create([
-                'booking_id' => $request->booking_id,
-                'method' => $request->method,
-                'virtual_account' => $request->virtual_account,
-                'payment_deadline' => $payment_deadline,
-                'status' => 'pending'
-            ]);
+        $orderId = 'BOOK-' . $booking->id . '-' . time();
 
-            // Load relasi booking
-            $payment->load('booking');
+        $params = [
+            'transaction_details' => [
+                'order_id' => $orderId,
+                'gross_amount' => (int)$validated['amount']
+            ],
+            'customer_details' => [
+                'first_name' => $booking->user->name ?? 'Customer',
+                'email' => $booking->user->email ?? '',
+                'phone' => $booking->user->phone ?? ''
+            ],
+            'item_details' => [
+                [
+                    'id' => $booking->schedule->id,
+                    'price' => (int)$validated['amount'],
+                    'quantity' => 1,
+                    'name' => 'Tiket Bus ' . ($booking->schedule->bus->name ?? 'Unknown') .
+                             ' (Kursi: ' . $booking->seat_number . ')'
+                ]
+            ]
+        ];
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Payment created successfully',
-                'data' => $payment
-            ], 201);
+        Log::info('Midtrans Parameters:', $params);
 
-        } catch (\Throwable $error) {
-            return response()->json([
-                'status' => 'failed',
-                'message' => 'Error: ' . $error->getMessage()
-            ], 500);
-        }
+        $snapToken = Snap::getSnapToken($params);
+        Log::info('Snap Token generated:', ['token' => $snapToken]);
+
+        $payment = Payment::create([
+            'booking_id' => $booking->id,
+            'amount' => $validated['amount'],
+            'payment_deadline' => now()->addDay(),
+            'status' => 'pending',
+            'payment_details' => [
+                'snap_token' => $snapToken,
+                'order_id' => $orderId
+            ]
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'snap_token' => $snapToken,
+                'payment' => $payment
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Payment Creation Error:', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
 
-    public function show($id)
+    public function handleCallback(Request $request)
     {
         try {
-            $payment = Payment::with('booking')->find($id);
+            $notification = json_decode($request->getContent(), true);
+
+            $transaction = $notification['transaction_status'];
+            $type = $notification['payment_type'];
+            $orderId = $notification['order_id'];
+            $vaNumber = $notification['va_numbers'][0]['va_number'] ?? null;
+
+            $payment = Payment::whereJsonContains('payment_details->order_id', $orderId)->first();
 
             if (!$payment) {
-                return response()->json([
-                    'status' => 'failed',
-                    'message' => 'Payment not found'
-                ], 404);
+                throw new \Exception('Payment not found');
             }
 
-            return response()->json([
-                'status' => 'success',
-                'data' => $payment
-            ], 200);
-
-        } catch (\Throwable $error) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
-            ], 500);
-        }
-    }
-
-    public function update(Request $request, $id)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'status' => 'required|in:pending,completed,failed'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => 'failed',
-                    'message' => $validator->errors()->first()
-                ], 422);
+            // Update virtual account jika ada
+            if ($vaNumber) {
+                $payment->virtual_account = $vaNumber;
             }
 
-            $payment = Payment::find($id);
-
-            if (!$payment) {
-                return response()->json([
-                    'status' => 'failed',
-                    'message' => 'Payment not found'
-                ], 404);
+            // Update status berdasarkan response Midtrans
+            switch ($transaction) {
+                case 'capture':
+                case 'settlement':
+                    $payment->status = 'completed';
+                    break;
+                case 'pending':
+                    $payment->status = 'pending';
+                    break;
+                case 'deny':
+                case 'cancel':
+                    $payment->status = 'failed';
+                    break;
+                case 'expire':
+                    $payment->status = 'expired';
+                    break;
             }
 
-            // Update payment status
-            $payment->update([
-                'status' => $request->status
-            ]);
+            // Update payment details
+            $paymentDetails = $payment->payment_details;
+            $paymentDetails['transaction_status'] = $transaction;
+            $paymentDetails['payment_type'] = $type;
+            $payment->payment_details = $paymentDetails;
 
-            // Jika payment completed, update booking status jadi paid
-            if ($request->status === 'completed') {
+            $payment->save();
+
+            // Update booking status
+            if ($payment->status === 'completed') {
                 $payment->booking->update(['status' => 'paid']);
+            } else if (in_array($payment->status, ['failed', 'expired'])) {
+                $payment->booking->update(['status' => 'canceled']);
             }
 
-            // Load relasi booking
-            $payment->load('booking');
+            return response()->json(['status' => 'success']);
 
+        } catch (\Exception $e) {
             return response()->json([
-                'status' => 'success',
-                'message' => 'Payment updated successfully',
-                'data' => $payment
-            ], 200);
-
-        } catch (\Throwable $error) {
-            return response()->json([
-                'status' => 'failed',
-                'message' => 'Error: ' . $error->getMessage()
+                'status' => 'error',
+                'message' => $e->getMessage()
             ], 500);
         }
     }
 
-    public function destroy($id)
+    public function uploadPaymentProof(Request $request, $paymentId)
     {
         try {
-            $payment = Payment::find($id);
+            $payment = Payment::findOrFail($paymentId);
 
-            if (!$payment) {
-                return response()->json([
-                    'status' => 'failed',
-                    'message' => 'Payment not found'
-                ], 404);
+            $request->validate([
+                'payment_proof' => 'required|image|max:2048' // max 2MB
+            ]);
+
+            if ($request->hasFile('payment_proof')) {
+                $file = $request->file('payment_proof');
+                $path = $file->store('payment_proofs', 'public');
+
+                $payment->update([
+                    'payment_proof' => $path,
+                    'status' => 'pending' // Status menunggu verifikasi
+                ]);
             }
-
-            $payment->delete();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment deleted successfully'
-            ], 200);
+                'message' => 'Bukti pembayaran berhasil diunggah',
+                'data' => $payment
+            ]);
 
-        } catch (\Throwable $error) {
+        } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error: ' . $error->getMessage()
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function checkStatus($paymentId)
+    {
+        try {
+            $payment = Payment::with('booking')->findOrFail($paymentId);
+
+            if ($payment->isExpired() && $payment->status === 'pending') {
+                $payment->update(['status' => 'expired']);
+                $payment->booking->update(['status' => 'canceled']);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $payment
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
             ], 500);
         }
     }
