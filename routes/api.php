@@ -57,6 +57,8 @@ Route::middleware('auth:api')->group(function () {
 Route::middleware('auth:api')->group(function () {
     // Endpoint untuk cek ketersediaan kursi
     Route::get('/bookings/check-availability/{scheduleId}', [BookingController::class, 'checkAvailability']);
+    Route::post('/bookings/{id}/complete-payment', [BookingController::class, 'completePayment']);
+    Route::get('/bookings/active', [BookingController::class, 'getActiveBookings']);
 
     // CRUD Booking
     Route::post('/bookings', [BookingController::class, 'store']);
