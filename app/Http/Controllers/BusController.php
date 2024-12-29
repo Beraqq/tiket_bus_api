@@ -77,12 +77,20 @@ class BusController extends Controller
     public function show($id)
     {
         $bus = Bus::find($id);
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'bus_code' => $bus->bus_code,
+                'class' => $bus->bus_class, // Pastikan field ini ada
+                'total_seats' => $bus->total_seats
+            ]
+        ]);
 
-        if (!$bus) {
-            return response()->json(['message' => 'Bus not found'], 404);
-        }
+        // if (!$bus) {
+        //     return response()->json(['message' => 'Bus not found'], 404);
+        // }
 
-        return response()->json($bus, 200);
+        // return response()->json($bus, 200);
     }
 
     // PUT /api/buses/{id}
